@@ -1,4 +1,6 @@
 var express = require('express');
+var nodemailer=require('nodemailer');
+var shortid = require('shortid');
 var mongodb = require('mongodb'),
 MongoClient = mongodb.MongoClient;
 var app = express();
@@ -9,6 +11,46 @@ var jwt=require('jsonwebtoken');
 app.set('superSecret','thisismysecret');
 app.use(bodyparser.urlencoded({ extended: false}));
 app.use(bodyparser.json());
+
+var GeneralEmail;
+//this is for the angularjs that will run only by the globelly.if you add the following code it will run locally
+
+app.all('*', function(req, res,next) {
+
+
+    /**
+     * Response settings
+     * @type {Object}
+     */
+    var responseSettings = {
+        "AccessControlAllowOrigin": req.headers.origin,
+        "AccessControlAllowHeaders": "Content-Type,X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5,  Date, X-Api-Version, X-File-Name",
+        "AccessControlAllowMethods": "POST, GET, PUT, DELETE, OPTIONS",
+        "AccessControlAllowCredentials": true
+    };
+
+    /**
+     * Headers
+     */
+    res.header("Access-Control-Allow-Credentials", responseSettings.AccessControlAllowCredentials);
+    res.header("Access-Control-Allow-Origin",  responseSettings.AccessControlAllowOrigin);
+    res.header("Access-Control-Allow-Headers", (req.headers['access-control-request-headers']) ? req.headers['access-control-request-headers'] : "x-requested-with");
+    res.header("Access-Control-Allow-Methods", (req.headers['access-control-request-method']) ? req.headers['access-control-request-method'] : responseSettings.AccessControlAllowMethods);
+
+    if ('OPTIONS' == req.method) {
+        res.sendStatus(200);
+    }
+    else {
+        next();
+    }
+
+
+});
+
+
+
+
+
 MongoClient.connect("mongodb://localhost/mytestl", function(err, database) {
   db = database;
   db.collection("textstore", {}, function(err, coll) {
@@ -17,7 +59,8 @@ MongoClient.connect("mongodb://localhost/mytestl", function(err, database) {
       });
     }
     db.ensureIndex("textstore", {
-      document: "text"
+      FolderID: "text",
+      
     }, function(err, indexname) {
     });
 }); db.collection("login", {}, function(err, coll) {
@@ -25,11 +68,12 @@ MongoClient.connect("mongodb://localhost/mytestl", function(err, database) {
       db.createCollection("login", function(err, result) {
       });
     }
+    db.createIndex("login" ,{ "UserName": 1 }, { unique: true } );
 });
 
-db.collection("folders", {}, function(err, coll) {
+db.collection("general", {}, function(err, coll) {
     if (err != null) {
-      db.createCollection("folders", function(err, result) {
+      db.createCollection("general", function(err, result) {
       });
     }
 });
@@ -38,19 +82,23 @@ db.collection("folders", {}, function(err, coll) {
 //----------------Registration api-----------------------------------------
 app.post("/register", function(req, res) {
   db.collection('login').insert({
-    UserName: req.body.UserName,
+    UserName: req.body.email,
     password:req.body.password
   }, function(err, result) {
     if (err == null) {
+
       res.send({success:true,message:"Registered successfully completed"});
     } else {
-      res.send({success:false,message:+err});
+  var check=new Date();
+      console.log(check);
+      res.send({success:false,message:"User already exist"});
     }
   });
 });
 //------------------login api--------------------------------
 app.post('/login', function(req, res){
   var email=req.body.email;
+  var loged;
   var password=req.body.password;
 db.collection('login').find( {UserName:email}, { UserName: 1} ).toArray(function(err, user){
 if(user.length!=0){
@@ -59,15 +107,13 @@ if(user1.length!=0)
 {
            var token=jwt.sign(_.omit(user), app.get('superSecret'),{
             expiresIn:60*60*24
-        });
-          res.json({
-            success: true,
-            message:'token created',
-            token:token   //token generation
-          });  
+        });     
+     
+
        db.collection('login').update(
    { UserName: email },
-   { $set: { User_token: token }}); //the token value store into the login collection.
+  { $set: { User_token: token}}); //the token value store into the login collection.
+       res.send({success:true,message:"Login success","LoginTime":loged,"UserName":email,"token":token});
 }
 else{
   res.send({success:false,"message":"Invalid Password"});
@@ -80,6 +126,40 @@ else{
 });
 });  
 //----------------------------forget password api---------------
+
+// Send the URL link to User regsitered email id----------------
+
+app.post('/sendlink', function(req, res, next) {
+ GeneralEmail= req.body.email;
+    var transporter = nodemailer.createTransport({
+        service: 'Gmail',
+        auth: {
+            user: 'senthil111itworld@gmail.com',
+            pass: 'Senthil123'
+        }
+    });
+
+  var mailOptions = {
+      from: 'senthil <senthil111itworld@gmail.com>',
+      to: GeneralEmail,
+      subject: 'password verification',
+      html: ' <a href="http://localhost:8000/#!/forgetpass">click here to set the password</a> '
+  };
+
+  transporter.sendMail(mailOptions, function(error, info){
+      if(error){
+          console.log(error);
+          res.redirect('/');
+      } else {
+          console.log('message Sent: ' + info.response);
+          res.send({success:true,message:'verification link sent to the email id'});
+
+      }
+  });
+});
+
+
+
 app.post('/forgetpassword',function(req,res){
   var email=req.body.email;
   var NewPassword=req.body.NewPassword;
@@ -92,13 +172,17 @@ app.post('/forgetpassword',function(req,res){
     else
     {
       res.send({success:true,message:'New Password Updated successfully'});
+      
+      //res.redirect('/login');
     }
-   }); 
-});
+   });
+});  
+
 //----------------------folder creation api.-----------------------------
 app.post("/folderadd",function(req,res){
  var token=req.body.token || req.query.token || req.headers['x-access-token'];
  var folder_name=req.body.folder_name;
+ var id=shortid.generate();
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
@@ -106,73 +190,188 @@ app.post("/folderadd",function(req,res){
 
       }else{
         
-        req.decoded=decoded;
-       
- // db.collection('login').find( { User_token: token }, { UserName: 1} ,function(err,email,callback){
-  db.collection('folders').insert({
- //UserName:email,
-  foldername:folder_name
-},function(err){
-  if(err){
-  console.log(err);
-      }
-  else{
-    res.send({success:true,"message":"The New Folder Created","FolderName":folder_name});
-  }
+        req.decoded=decoded;          
+   db.collection('textstore').insert({
+    FolderName:folder_name,
+    created: new Date(),
+    FolderID:id,
+  }, function(err, result) {
+    if (err == null) {
+      res.send({success:true,message:'Folder added'});
+    } else {
+      console.log(err);
+      res.send({success:false,message:'failed to add the Folder'});
+    }
+  });
 
-});
   }
-    });
-  }else{
+})
+  }
+  else{
     return res.status(404).send({
       success:false,
       message:'no token provided'
     });
   }
 });
+//-------------------------------folder display------------------
+app.post('/folderdisplay',function(req,res){
+  var token=req.body.token || req.query.token || req.headers['x-access-token'];
+  if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.json({success:false, message:'failed to authendicate the tokens'});
+      }else{  
+        req.decoded=decoded; 
+
+db.collection('textstore').find({},{FolderID:1,FolderName:1,created:1,_id:0}).sort({created:-1}).limit(3).toArray(function(err,display){
+if(err){
+  console.log(err);
+  res.send({success:false,message:"can not display the folders"});
+}
+{
+  res.send({success:true,message:"folderdisplay","myfolder":display})
+}
+});
+
+  }
+});
+  }
+  else{
+    return res.status(404).send({
+      success:false,
+      message:'no token provided'
+    });
+  }
+});
+//-------------------get all the folders-------------------------
+app.post('/moredisplay',function(req,res){
+ var token=req.body.token || req.query.token || req.headers['x-access-token'];
+  if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.json({success:false, message:'failed to authendicate the tokens'});
+      }else{  
+        req.decoded=decoded; 
+
+db.collection('textstore').find({},{FolderID:1,FolderName:1,created:1,_id:0}).toArray(function(err,display){
+if(err){
+  console.log(err);
+  res.send({success:false,message:"can not display the folders"});
+}
+{
+  res.send({success:true,message:"folderdisplay","myfolder":display})
+}
+});
+  }
+});
+  }
+  else{
+    return res.status(404).send({
+      success:false,
+      message:'no token provided'
+    });
+  }
+});
+
+
 //----------------------assumption for adding the data into database.------------------
-app.post("/add", function(req, res) {
+app.post("/addContent", function(req, res) {
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- var foldername=req.body.folder_name;
+ var id=req.body.FolderID;
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
         return res.send({success:false, message:'failed to authendicate the tokens'});
       }else{
-        
-        req.decoded=decoded;
-  /*db.collection('login').find({
-   User_token:token
-}, {
-    UserName: 1
-},function(err,email){*/
-
-   db.collection('textstore').insert({
-
-    //UserName:email,
-    FolderName:foldername,
+    //db.textstore.update({FolderID:12334},{$addToSet:{details:{$each: [{created:"s411111s",link:"41115dd",document:"s451111s"}]}}})
+        req.decoded=decoded;       
+db.collection('textstore').update({
+    FolderID: id} ,{$addToSet:{details:{$each: [{
     created: new Date(),
     link:req.body.link,
-    document:req.body.document
-  }, function(err, result) {
-    if (err == null) {
-      res.send({success:true,message:'document added'});
-    } else {
+    document:req.body.document}]}
+  }},function(err){
+    if(err){
+      res.send({success:false,message:'Data is not added'});
       console.log(err);
-      res.send({success:false,message:'failed to add the document'});
+    }
+    else
+    {
+      res.send({success:true,message:'Data added'});
     }
   });
 }
 });
 }
-  else{
-    res.send({success:true,message:"must provide the tokens"});
+else{
+    res.send({success:false,message:"must provide the tokens"});
   }
 }); 
-//-------------------search api----------------------------
-app.post("/search", function(req, res) {
+
+app.post('/generaladd',function(req,res){
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- var foldername=req.body.folder_name;
+ var id=req.body.FolderID;
+  if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.send({success:false, message:'failed to authendicate the tokens'});
+      }else{
+        req.decoded=decoded;
+        var now=new Date();
+        var TimeUTC=now.toUTCString(); 
+
+db.collection('general').insert({
+    created: TimeUTC,
+    link:req.body.link,
+    document:req.body.document},function(err){
+    if(err){
+      res.send({success:false,message:'Data is not added'});
+      console.log(err);
+    }
+    else
+    {
+      res.send({success:true,message:'Data added to general catagory'});
+    }
+  });
+}
+});
+}
+else{
+    res.send({success:false,message:"must provide the tokens"});
+  }
+});
+//-----------------------------general display -----------------
+app.post('/generaldisplay',function(req,res){
+  var token=req.body.token || req.query.token || req.headers['x-access-token'];
+ var id=req.body.FolderID;
+  if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.send({success:false, message:'failed to authendicate the tokens'});
+      }else{
+        req.decoded=decoded;       
+db.collection('general').find({},{created:1,link:1,document:1,_id:0}).toArray(function(err,gendata){
+    if(err){
+      res.send({success:false,message:'No General Data is not added'});
+      console.log(err);
+    }
+    else
+    {
+      res.send({success:true,message:'Data added to general catagory',"general":gendata});
+    }
+  });
+}
+});
+}
+else{
+    res.send({success:false,message:"must provide the tokens"});
+  }
+});
+//-------------------search api----------------------------
+app.post("/searchByClick", function(req, res) {
+var token=req.body.token || req.query.token || req.headers['x-access-token'];
+ //var foldername=req.body.folder_name;
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
@@ -181,25 +380,77 @@ var token=req.body.token || req.query.token || req.headers['x-access-token'];
        req.decoded=decoded;
   db.collection('textstore').find({
     "$text": {
-      "$search": req.body.query
+      "$search": req.body.FolderID
     }
-  }, {
-    document: 1,
-    created: 1,
-    _id: 1,
-    link: 1,
-    FolderName: 1,
-    
+  } ,{
+    _id: 0,
+    details:1,  
   }).toArray(function(err, items) {
-    res.send(items);
+    if(err){
+        console.log(err);}
+        else
+        {
+              res.send({success:true,"content":items});
+              //var ip = require("ip");
+              //var myip=ip.address()
+
+const publicIp = require('public-ip'); 
+publicIp.v4().then(ip => {
+    console.log("this is my ip"+ip);   
+    var satelize = require('satelize');
+satelize.satelize({ip:ip}, function(err, payload) {
+                  console.log(JSON.stringify(payload.country.en));
+                  console.log(JSON.stringify(payload.timezone));
+
+var now=new Date();
+var TimeUTC=now.toUTCString();
+console.log(TimeUTC);
+      var date = new Date(TimeUTC);
+console.log(date.toString());
+
+});
+});
+        }
   });
 }
 });
 }
 else{
-    res.send({success:true,message:"must provide the tokens"});
+    res.send({success:false,message:"must provide the tokens"});
   }
 });
+//---------------------search by keyword---------------------------------
+app.post("/searchByKey", function(req, res) {
+var token=req.body.token || req.query.token || req.headers['x-access-token'];
+ 
+  if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.send({success:false, message:'failed to authendicate the tokens'});
+      }else{ 
+       req.decoded=decoded;
+  db.collection('textstore').find({
+    "$text": {
+      "$search": req.body.keyword
+    }
+  }, {
+    
+    _id: 0,
+    created: 1,
+    details:1,  
+  }).toArray(function(err, items) {
+    res.send({success:true,"content":items});
+  });
+}
+});
+}
+else{
+    res.send({success:false,message:"must provide the tokens"});
+  }
+});
+//----------------------------------------------------------------
+
+
 app.listen(3000);
 
 

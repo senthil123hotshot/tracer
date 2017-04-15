@@ -11,8 +11,15 @@
   "dependencies": {
     "body-parser": "^1.17.1",
     "express": "^4.15.2",
+    "ip": "^1.1.5",
     "jsonwebtoken": "^7.3.0",
     "lodash": "^4.17.4",
-    "mongodb": "^2.2.25"
+    "moment": "^2.18.1",
+    "mongodb": "^2.2.25",
+    "node-datetime": "^1.0.0",
+    "nodemailer": "^4.0.0",
+    "public-ip": "^2.3.3",
+    "satelize": "^0.2.0",
+    "shortid": "^2.2.8"
   }
 }
