@@ -1,6 +1,8 @@
 var express = require('express');
 var nodemailer=require('nodemailer');
 var shortid = require('shortid');
+var metaget = require("metaget");
+var request=require("request");
 var mongodb = require('mongodb'),
 MongoClient = mongodb.MongoClient;
 var app = express();
@@ -47,10 +49,6 @@ app.all('*', function(req, res,next) {
 
 });
 
-
-
-
-
 MongoClient.connect("mongodb://localhost/mytestl", function(err, database) {
   db = database;
   db.collection("textstore", {}, function(err, coll) {
@@ -77,24 +75,69 @@ db.collection("general", {}, function(err, coll) {
       });
     }
 });
+db.collection("otp", {}, function(err, coll) {
+    if (err != null) {
+      db.createCollection("otp", function(err, result) {
+      });
+    }
 });
+});
+//signup api----------------------------
+//------------------------------send the otp---------------------------
+app.post('/sendotp',function(req,res){
+  var val = Math.floor(1000 + Math.random() * 9000);
+  var n=val.toString();
+  var PhoneNo=req.body.PhoneNo;
+  console.log(PhoneNo);
+  var url="https://control.msg91.com/api/sendhttp.php?authkey=93907AcKTgFOlx560e23a3&mobiles=";
+  var add1=url.concat(PhoneNo);
+  
+  var add2="&message=your OTP for INSENSE registeration is:"
+  var add3=add1.concat(add2);
+  var add5=add3.concat(n);
+  var add4="&sender=indias&route=4";
+  var final=add5.concat(add4);
+  
+  request(final, function (error, response, body) {
+  
+  res.send({"success":true,"message":"OTP send to the registered Phoneno"});
+  db.collection("otp").insert({
+    otpnumber:n,
+    mobile:PhoneNo
+  }),function(err){
+    if(err){
+      console.log(err);
+    }
+  }
+});
+});
+//-------------------verify OTP-------------
 
-//----------------Registration api-----------------------------------------
-app.post("/register", function(req, res) {
-  db.collection('login').insert({
+app.post("/verifyotp",function(req,res){
+  var userotp=req.body.userotp;
+  console.log(userotp);
+  db.collection('otp').find( {otpnumber:userotp}, { otpnumber: 1} ).toArray(function(err, user){
+    if(user.length!=0){
+    db.collection('login').insert({
+    PhoneNo:req.body.PhoneNo,
     UserName: req.body.email,
-    password:req.body.password
+    password:req.body.password,
+    registerDate:new Date()
   }, function(err, result) {
     if (err == null) {
-
       res.send({success:true,message:"Registered successfully completed"});
     } else {
-  var check=new Date();
-      console.log(check);
       res.send({success:false,message:"User already exist"});
     }
   });
+    }
+    else{
+      res.send({"success":false,"message":"otp failed"});
+    }
 });
+});
+//---------------------------------------------------------
+
 //------------------login api--------------------------------
 app.post('/login', function(req, res){
   var email=req.body.email;
@@ -182,6 +225,7 @@ app.post('/forgetpassword',function(req,res){
 app.post("/folderadd",function(req,res){
  var token=req.body.token || req.query.token || req.headers['x-access-token'];
  var folder_name=req.body.folder_name;
+ console.log(folder_name);
  var id=shortid.generate();
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
@@ -285,11 +329,22 @@ var token=req.body.token || req.query.token || req.headers['x-access-token'];
         return res.send({success:false, message:'failed to authendicate the tokens'});
       }else{
     //db.textstore.update({FolderID:12334},{$addToSet:{details:{$each: [{created:"s411111s",link:"41115dd",document:"s451111s"}]}}})
+       
+
+var input=req.body.input;
+metaget.fetch(input, function (err, meta_response) {  
+    if(err){
+        console.log(err);
+    }else{
+     var link1={
+        "value":meta_response,
+        "link":input  
+      };
         req.decoded=decoded;       
 db.collection('textstore').update({
     FolderID: id} ,{$addToSet:{details:{$each: [{
     created: new Date(),
-    link:req.body.link,
+    link:link1,
     document:req.body.document}]}
   }},function(err){
     if(err){
@@ -304,6 +359,8 @@ db.collection('textstore').update({
 }
 });
 }
+});
+}
 else{
     res.send({success:false,message:"must provide the tokens"});
   }
@@ -311,7 +368,7 @@ else{
 
 app.post('/generaladd',function(req,res){
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- var id=req.body.FolderID;
+ //var id=req.body.FolderID;
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
@@ -321,10 +378,20 @@ var token=req.body.token || req.query.token || req.headers['x-access-token'];
         var now=new Date();
         var TimeUTC=now.toUTCString(); 
 
-db.collection('general').insert({
-    created: TimeUTC,
-    link:req.body.link,
-    document:req.body.document},function(err){
+var input=req.body.input;
+metaget.fetch(input, function (err, meta_response) {  
+    if(err){
+        console.log(err);
+    }else{
+     var link1={
+        "value":meta_response,
+        "link":input  
+      };
+      db.collection('general').insert({
+   created: TimeUTC,
+    link:link1,
+    document:req.body.document
+  },function(err){
     if(err){
       res.send({success:false,message:'Data is not added'});
       console.log(err);
@@ -332,8 +399,13 @@ db.collection('general').insert({
     else
     {
       res.send({success:true,message:'Data added to general catagory'});
+      console.log(link1.value.description);
+
     }
   });
+  //res.send({"value":meta_response});
+    }
+});
 }
 });
 }
@@ -390,10 +462,9 @@ var token=req.body.token || req.query.token || req.headers['x-access-token'];
         console.log(err);}
         else
         {
-              res.send({success:true,"content":items});
-              //var ip = require("ip");
-              //var myip=ip.address()
-
+             res.send({success:true,"content":items});
+            
+/*
 const publicIp = require('public-ip'); 
 publicIp.v4().then(ip => {
     console.log("this is my ip"+ip);   
@@ -407,11 +478,12 @@ var TimeUTC=now.toUTCString();
 console.log(TimeUTC);
       var date = new Date(TimeUTC);
 console.log(date.toString());
+*/
 
+}
 });
-});
-        }
-  });
+
+   
 }
 });
 }
