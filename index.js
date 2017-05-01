@@ -221,6 +221,42 @@ app.post('/forgetpassword',function(req,res){
    });
 });  
 
+//------------------folderrename---------------------------
+app.post("/folderrename",function(req,res){
+ var token=req.body.token || req.query.token || req.headers['x-access-token'];
+ var folderoldername=req.body.folderoldername;
+ var foldernewname=req.body.foldernewname;
+ if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.json({success:false, message:'failed to authendicate the tokens'});
+
+      }else{
+        
+        req.decoded=decoded;          
+    db.collection('textstore').update(
+   { FolderName:folderoldername  },
+   { $set: { FolderName: foldernewname }},function(err){
+    if(err){
+      res.send({success:false,message:'FolderName not updated'});
+    }
+    else
+    {
+      res.send({success:true,message:'New FolderName Updated successfully'});
+    }
+   });
+  }
+})
+  }
+  else{
+    return res.status(404).send({
+      success:false,
+      message:'no token provided'
+    });
+  }
+
+});
+
 //----------------------folder creation api.-----------------------------
 app.post("/folderadd",function(req,res){
  var token=req.body.token || req.query.token || req.headers['x-access-token'];
@@ -234,7 +270,10 @@ app.post("/folderadd",function(req,res){
 
       }else{
         
-        req.decoded=decoded;          
+        req.decoded=decoded; 
+  db.collection('textstore').find( {FolderName:folder_name}, { FolderName: 1} ).toArray(function(err, fname){
+ if(fname.length==0){
+         
    db.collection('textstore').insert({
     FolderName:folder_name,
     created: new Date(),
@@ -249,8 +288,13 @@ app.post("/folderadd",function(req,res){
   });
 
   }
-})
+  else{
+        res.send({success:false,message:'Folder already exist'});
   }
+});  
+}
+});
+}
   else{
     return res.status(404).send({
       success:false,
@@ -288,6 +332,7 @@ if(err){
     });
   }
 });
+
 //-------------------get all the folders-------------------------
 app.post('/moredisplay',function(req,res){
  var token=req.body.token || req.query.token || req.headers['x-access-token'];
@@ -318,11 +363,10 @@ if(err){
   }
 });
 
-
 //----------------------assumption for adding the data into database.------------------
 app.post("/addContent", function(req, res) {
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- var id=req.body.FolderID;
+ var FolChoose=req.body.FolChoose;
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
@@ -330,8 +374,8 @@ var token=req.body.token || req.query.token || req.headers['x-access-token'];
       }else{
     //db.textstore.update({FolderID:12334},{$addToSet:{details:{$each: [{created:"s411111s",link:"41115dd",document:"s451111s"}]}}})
        
-
-var input=req.body.input;
+//---------meta data capture-------------
+/*var input=req.body.input;
 metaget.fetch(input, function (err, meta_response) {  
     if(err){
         console.log(err);
@@ -340,11 +384,16 @@ metaget.fetch(input, function (err, meta_response) {
         "value":meta_response,
         "link":input  
       };
-        req.decoded=decoded;       
+        req.decoded=decoded;*/ 
+
+req.decoded=decoded;  
+var val = Math.floor(1000 + Math.random() * 9000); 
+if(FolChoose==true){  
 db.collection('textstore').update({
-    FolderID: id} ,{$addToSet:{details:{$each: [{
+    FolderID: req.body.FolderID} ,{$addToSet:{details:{$each: [{
+      Content_id:val,
     created: new Date(),
-    link:link1,
+    link:req.body.link,
     document:req.body.document}]}
   }},function(err){
     if(err){
@@ -357,39 +406,11 @@ db.collection('textstore').update({
     }
   });
 }
-});
-}
-});
-}
 else{
-    res.send({success:false,message:"must provide the tokens"});
-  }
-}); 
-
-app.post('/generaladd',function(req,res){
-var token=req.body.token || req.query.token || req.headers['x-access-token'];
- //var id=req.body.FolderID;
-  if(token){
-    jwt.verify(token,app.get('superSecret'), function(err,decoded){
-      if(err){
-        return res.send({success:false, message:'failed to authendicate the tokens'});
-      }else{
-        req.decoded=decoded;
-        var now=new Date();
-        var TimeUTC=now.toUTCString(); 
-
-var input=req.body.input;
-metaget.fetch(input, function (err, meta_response) {  
-    if(err){
-        console.log(err);
-    }else{
-     var link1={
-        "value":meta_response,
-        "link":input  
-      };
-      db.collection('general').insert({
+ db.collection('general').insert({
+  Content_id:val,
    created: TimeUTC,
-    link:link1,
+    link:req.body.link,
     document:req.body.document
   },function(err){
     if(err){
@@ -403,16 +424,22 @@ metaget.fetch(input, function (err, meta_response) {
 
     }
   });
-  //res.send({"value":meta_response});
-    }
-});
+}
 }
 });
 }
 else{
     res.send({success:false,message:"must provide the tokens"});
   }
+}); 
+//-----------------content move-------------------
+app.post("/contenthold",function(req,res){
+var 
 });
+
+
+
+
 //-----------------------------general display -----------------
 app.post('/generaldisplay',function(req,res){
   var token=req.body.token || req.query.token || req.headers['x-access-token'];
@@ -440,7 +467,7 @@ else{
     res.send({success:false,message:"must provide the tokens"});
   }
 });
-//-------------------search api----------------------------
+//-------------------search by click api----------------------------
 app.post("/searchByClick", function(req, res) {
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
  //var foldername=req.body.folder_name;
@@ -481,9 +508,7 @@ console.log(date.toString());
 */
 
 }
-});
-
-   
+}); 
 }
 });
 }
@@ -521,8 +546,5 @@ else{
   }
 });
 //----------------------------------------------------------------
-
-
 app.listen(3000);
-
 
