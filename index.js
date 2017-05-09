@@ -3,6 +3,16 @@ var nodemailer=require('nodemailer');
 var shortid = require('shortid');
 var metaget = require("metaget");
 var request=require("request");
+var  passport          =     require('passport')
+var util              =     require('util');
+  var FacebookStrategy  =     require('passport-facebook').Strategy;
+  var TwitterStrategy  =     require('passport-twitter').Strategy;
+ var GoogleStrategy  =     require('passport-google-oauth2').Strategy;
+  var LinkedinStrategy  =     require('passport-linkedin').Strategy;
+var session           =     require('express-session');
+  var cookieParser      =     require('cookie-parser');
+
+
 var mongodb = require('mongodb'),
 MongoClient = mongodb.MongoClient;
 var app = express();
@@ -13,8 +23,12 @@ var jwt=require('jsonwebtoken');
 app.set('superSecret','thisismysecret');
 app.use(bodyparser.urlencoded({ extended: false}));
 app.use(bodyparser.json());
-
+app.use(cookieParser());
+app.use(session({ secret: 'keyboard cat', key: 'sid'}));
+app.use(passport.initialize());
+app.use(passport.session());
 var GeneralEmail;
+var User
 //this is for the angularjs that will run only by the globelly.if you add the following code it will run locally
 
 app.all('*', function(req, res,next) {
@@ -57,7 +71,7 @@ MongoClient.connect("mongodb://localhost/mytestl", function(err, database) {
       });
     }
     db.ensureIndex("textstore", {
-      FolderID: "text",
+      "details.document": "text",
       
     }, function(err, indexname) {
     });
@@ -74,6 +88,17 @@ db.collection("general", {}, function(err, coll) {
       db.createCollection("general", function(err, result) {
       });
     }
+db.ensureIndex("general", {
+      "details.document": "text",
+      
+    }, function(err, indexname) {
+    });
+});
+db.collection("folders", {}, function(err, coll) {
+    if (err != null) {
+      db.createCollection("folders", function(err, result) {
+      });
+    }
 });
 db.collection("otp", {}, function(err, coll) {
     if (err != null) {
@@ -81,6 +106,109 @@ db.collection("otp", {}, function(err, coll) {
       });
     }
 });
+});
+        //----------------login via social media------------------
+        // Passport session setup.
+passport.serializeUser(function(user, done) {
+  done(null, user);
+});
+
+passport.deserializeUser(function(obj, done) {
+  done(null, obj);
+});
+
+//using facebook--------------------
+
+passport.use(new FacebookStrategy({
+    "clientID": "1438177266224635",
+    "clientSecret":"decd84f0c73c7afb1cbe7fe8978ed93f",
+    "callbackURL": "http://localhost:3000/auth/facebook/callback"
+  },
+  function(accessToken, refreshToken, profile, done) {
+
+    process.nextTick(function () {
+      return done(null, profile);
+    });
+  }
+));
+
+//when click the facebook icon in the login page..........
+app.get('/auth/facebook', passport.authenticate('facebook'));
+app.get('/auth/facebook/callback',
+  passport.authenticate('facebook', { successRedirect : '/', failureRedirect: '/login' }),
+  function(req, res) {
+    res.send("home page open");//here load the our home page
+  });
+app.get('/login', function(req, res){
+  res.send("login page");
+});
+//login via twitter-------------
+passport.use(new TwitterStrategy({
+    "consumerKey":"7UrDSprdv5NhrsRGbSpWjY9hY",
+    "consumerSecret":"GJcqtqGUqilUbDO7S5oNmVHGdYNDdD0p1sJBLhDQ4KM4khB2k0" ,
+    "callbackURL": "http://localhost:3000/auth/twitter/callback"
+  },
+  function(accessToken, refreshToken, profile, done) {
+    process.nextTick(function () {
+      return done(null, profile);
+    });
+  }
+));
+//when click the twitter icon---------------
+app.get('/auth/twitter', passport.authenticate('twitter'));
+app.get('/auth/twitter/callback',
+  passport.authenticate('twitter', { successRedirect : '/', failureRedirect: '/login' }),
+  function(req, res) {
+    res.send('/');
+  });
+app.get('/login',function(req,res){
+  res.send("please login");
+});
+//login via gmail------------------
+passport.use(new GoogleStrategy({
+    "clientID":"868801597079-igoslsrgeg25es87f46ivnbf41avka5u.apps.googleusercontent.com",
+    "clientSecret":"wUOIEFo-mLRRs6hLCZXCrrpW" ,
+    "callbackURL":"http://localhost:3000/auth/google/callback",
+  },
+  function(accessToken, refreshToken, profile, done) {
+    process.nextTick(function () {
+      return done(null, profile);
+    });
+  }
+));
+app.get('/auth/google', passport.authenticate('google', { scope: [
+       'https://www.googleapis.com/auth/plus.login',
+       'https://www.googleapis.com/auth/plus.profile.emails.read'] 
+}));
+app.get('/auth/google/callback',
+  passport.authenticate('google', { successRedirect : '/', failureRedirect: '/login' }),
+  function(req, res) {
+    res.send("home page login");
+  });
+app.get('/login',function(req,res){
+  res.send("please login");
+});
+//login via linked in----------------
+
+passport.use(new LinkedinStrategy({
+    "consumerKey":"81aj6znk48q4s5",
+    "consumerSecret":"kURVId1SZAc3OOFP" ,
+    "callbackURL":"http://localhost:3000/auth/linkedin/callback",
+  },
+  function(accessToken, refreshToken, profile, done) {
+    process.nextTick(function () {    
+      return done(null, profile);
+    });
+  }
+));
+app.get('/auth/linkedin', passport.authenticate('linkedin'));
+app.get('/auth/linkedin/callback',
+  passport.authenticate('linkedin', { successRedirect : '/', failureRedirect: '/login' }),
+  function(req, res) {
+    res.send('home page load');
+  });
+app.get('/login',function(req,res){
+  res.send("please login");
 });
 //signup api----------------------------
 //------------------------------send the otp---------------------------
@@ -156,7 +284,20 @@ if(user1.length!=0)
        db.collection('login').update(
    { UserName: email },
   { $set: { User_token: token}}); //the token value store into the login collection.
+
        res.send({success:true,message:"Login success","LoginTime":loged,"UserName":email,"token":token});
+db.collection('general').insert({UserName:email},function(err,result){});
+db.collection('folders').find({UserName:email},{UserName:1,_id:0}).toArray(function(err,result){
+console.log(result.length);
+if(result.length==0)
+db.collection('folders').insert({UserName:email},function(err,result){
+  console.log(email);
+});
+});
+db.collection('otp').find({UserName:email},{UserName:1,_id:0}).toArray(function(err,result){
+if(result.length==0)
+db.collection('otp').insert({UserName:email},function(err,result){});
+});
 }
 else{
   res.send({success:false,"message":"Invalid Password"});
@@ -200,9 +341,6 @@ app.post('/sendlink', function(req, res, next) {
       }
   });
 });
-
-
-
 app.post('/forgetpassword',function(req,res){
   var email=req.body.email;
   var NewPassword=req.body.NewPassword;
@@ -232,21 +370,25 @@ app.post("/folderrename",function(req,res){
         return res.json({success:false, message:'failed to authendicate the tokens'});
 
       }else{
-        
-        req.decoded=decoded;          
-    db.collection('textstore').update(
-   { FolderName:folderoldername  },
-   { $set: { FolderName: foldernewname }},function(err){
-    if(err){
-      res.send({success:false,message:'FolderName not updated'});
-    }
-    else
-    {
-      res.send({success:true,message:'New FolderName Updated successfully'});
-    }
-   });
+        req.decoded=decoded;
+    db.collection('login').find({User_token:token},{UserName:1,_id:0}).toArray(function(err,UserName1){
+    db.collection('folders').find({UserName:UserName1[0].UserName},{UserName:1,_id:0}).toArray(function(err,result){
+      db.collection('folders').update({
+        "Folders.FolderName":folderoldername,
+      },{$set :{
+        "Folders.$.FolderName":foldernewname
+      }},function(err,rese){
+        if(err){
+          res.send("error");
+        }
+        else{
+          res.send({success:true,message:"updated"})
+        }
+      });
+});  
+    });
   }
-})
+});
   }
   else{
     return res.status(404).send({
@@ -254,12 +396,11 @@ app.post("/folderrename",function(req,res){
       message:'no token provided'
     });
   }
-
 });
-
 //----------------------folder creation api.-----------------------------
 app.post("/folderadd",function(req,res){
  var token=req.body.token || req.query.token || req.headers['x-access-token'];
+
  var folder_name=req.body.folder_name;
  console.log(folder_name);
  var id=shortid.generate();
@@ -270,30 +411,35 @@ app.post("/folderadd",function(req,res){
 
       }else{
         
-        req.decoded=decoded; 
-  db.collection('textstore').find( {FolderName:folder_name}, { FolderName: 1} ).toArray(function(err, fname){
- if(fname.length==0){
-         
-   db.collection('textstore').insert({
-    FolderName:folder_name,
-    created: new Date(),
-    FolderID:id,
-  }, function(err, result) {
-    if (err == null) {
-      res.send({success:true,message:'Folder added'});
-    } else {
-      console.log(err);
-      res.send({success:false,message:'failed to add the Folder'});
-    }
-  });
+        req.decoded=decoded;
 
-  }
-  else{
-        res.send({success:false,message:'Folder already exist'});
+    db.collection('login').find({User_token:token},{UserName:1,_id:0}).toArray(function(err,UserName){
+  db.collection('folders').find( {UserName:UserName[0].UserName}, { UserName:1,_id:0} ).toArray(function(err, UserName1){     
+   db.collection('folders').update({
+    UserName: UserName1[0].UserName} ,{$addToSet:{Folders:{$each: [{
+     FolderID:id,
+     FolderName:folder_name,
+     created:new Date()
+   }]}
+  }},function(err){
+    if(err){
+      res.send({success:false,message:'Data is not added'});
+      console.log(err);
+    }
+    else
+    {
+      res.send({success:true,message:'Data added'});
+      db.collection('textstore').find({FolderID:id},{FolderID:1,_id:0}).toArray(function(err,result){
+        if(result.length==0){
+      db.collection('textstore').insert({FolderID:id},function(err,resul){});
+    }
+    });
+  };
+});
+});
+});
   }
 });  
-}
-});
 }
   else{
     return res.status(404).send({
@@ -311,46 +457,18 @@ app.post('/folderdisplay',function(req,res){
         return res.json({success:false, message:'failed to authendicate the tokens'});
       }else{  
         req.decoded=decoded; 
-
-db.collection('textstore').find({},{FolderID:1,FolderName:1,created:1,_id:0}).sort({created:-1}).limit(3).toArray(function(err,display){
+ db.collection('login').find({User_token:token},{UserName:1,_id:0}).toArray(function(err,UserName){
+  db.collection('folders').find( {UserName:UserName[0].UserName}, { UserName:1,_id:0} ).toArray(function(err, username){
+db.collection('folders').find({UserName:username[0].UserName},{Folders:1,_id:0}).toArray(function(err,display){
 if(err){
   console.log(err);
   res.send({success:false,message:"can not display the folders"});
 }
 {
-  res.send({success:true,message:"folderdisplay","myfolder":display})
+  res.send({success:true,message:"folderdisplay","myfolder":display[0].Folders});
 }
 });
-
-  }
 });
-  }
-  else{
-    return res.status(404).send({
-      success:false,
-      message:'no token provided'
-    });
-  }
-});
-
-//-------------------get all the folders-------------------------
-app.post('/moredisplay',function(req,res){
- var token=req.body.token || req.query.token || req.headers['x-access-token'];
-  if(token){
-    jwt.verify(token,app.get('superSecret'), function(err,decoded){
-      if(err){
-        return res.json({success:false, message:'failed to authendicate the tokens'});
-      }else{  
-        req.decoded=decoded; 
-
-db.collection('textstore').find({},{FolderID:1,FolderName:1,created:1,_id:0}).toArray(function(err,display){
-if(err){
-  console.log(err);
-  res.send({success:false,message:"can not display the folders"});
-}
-{
-  res.send({success:true,message:"folderdisplay","myfolder":display})
-}
 });
   }
 });
@@ -362,36 +480,21 @@ if(err){
     });
   }
 });
-
 //----------------------assumption for adding the data into database.------------------
 app.post("/addContent", function(req, res) {
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- var FolChoose=req.body.FolChoose;
+ var FolChoose=req.body.FolChoose;//folderid as the input
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
         return res.send({success:false, message:'failed to authendicate the tokens'});
       }else{
-    //db.textstore.update({FolderID:12334},{$addToSet:{details:{$each: [{created:"s411111s",link:"41115dd",document:"s451111s"}]}}})
-       
-//---------meta data capture-------------
-/*var input=req.body.input;
-metaget.fetch(input, function (err, meta_response) {  
-    if(err){
-        console.log(err);
-    }else{
-     var link1={
-        "value":meta_response,
-        "link":input  
-      };
-        req.decoded=decoded;*/ 
-
 req.decoded=decoded;  
 var val = Math.floor(1000 + Math.random() * 9000); 
 if(FolChoose==true){  
 db.collection('textstore').update({
     FolderID: req.body.FolderID} ,{$addToSet:{details:{$each: [{
-      Content_id:val,
+    Content_id:val,
     created: new Date(),
     link:req.body.link,
     document:req.body.document}]}
@@ -407,58 +510,84 @@ db.collection('textstore').update({
   });
 }
 else{
- db.collection('general').insert({
-  Content_id:val,
-   created: TimeUTC,
+   db.collection('login').find({User_token:token},{UserName:1,_id:0}).toArray(function(err,UserName1){
+  db.collection('general').find({UserName:UserName1[0].UserName},{UserName:1,_id:0}).toArray(function(err,result){
+ if(result.length==0){
+res.send("error");}
+else{
+db.collection('general').update({
+  UserName:result[0].UserName
+},{$addToSet:{details:{$each: [{
+    Content_id:val,
+    created: new Date(),
     link:req.body.link,
-    document:req.body.document
-  },function(err){
+    document:req.body.document}]}
+  }},function(err){
     if(err){
-      res.send({success:false,message:'Data is not added'});
+      res.send({success:false,message:'Data is not to general catagory added'});
       console.log(err);
     }
     else
     {
-      res.send({success:true,message:'Data added to general catagory'});
-      console.log(link1.value.description);
-
+      res.send({success:true,message:'Data added to General'});
     }
   });
 }
-}
 });
+});
+}
+}
+  });
 }
 else{
     res.send({success:false,message:"must provide the tokens"});
   }
 }); 
-//-----------------content move-------------------
-app.post("/contenthold",function(req,res){
-var 
-});
-
-
-
-
-//-----------------------------general display -----------------
+//-----------------------------general display(without the folder)-----------------
 app.post('/generaldisplay',function(req,res){
   var token=req.body.token || req.query.token || req.headers['x-access-token'];
- var id=req.body.FolderID;
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
         return res.send({success:false, message:'failed to authendicate the tokens'});
       }else{
-        req.decoded=decoded;       
-db.collection('general').find({},{created:1,link:1,document:1,_id:0}).toArray(function(err,gendata){
+        req.decoded=decoded;  
+
+db.collection('login').find({User_token:token},{UserName:1,_id:0}).toArray(function(err,UserName){
+db.collection('general').find({UserName:UserName[0].UserName},{details:1,_id:0}).toArray(function(err,gendata){
     if(err){
       res.send({success:false,message:'No General Data is not added'});
       console.log(err);
     }
     else
     {
-      res.send({success:true,message:'Data added to general catagory',"general":gendata});
+      res.send({success:true,message:'Data added to general catagory',"general":gendata[0].details});
     }
+  });
+});
+}
+});
+}
+else{
+    res.send({success:false,message:"must provide the tokens"});
+  }
+});
+//---------------------search by click the folder---------------------------------
+app.post("/searchByClick", function(req, res) {
+var token=req.body.token || req.query.token || req.headers['x-access-token'];
+  if(token){
+    jwt.verify(token,app.get('superSecret'), function(err,decoded){
+      if(err){
+        return res.send({success:false, message:'failed to authendicate the tokens'});
+      }else{ 
+       req.decoded=decoded;
+  db.collection('textstore').find({
+    FolderID:req.body.FolderID
+  },{_id:0,details:1}).toArray(function(err, items) {
+    if (err) {console.log(err);}
+    else{
+       res.send({success:true,"content":items});
+       }
   });
 }
 });
@@ -467,48 +596,22 @@ else{
     res.send({success:false,message:"must provide the tokens"});
   }
 });
-//-------------------search by click api----------------------------
-app.post("/searchByClick", function(req, res) {
+//------------------------search by the search bar----------------------
+app.post("/searchByBar", function(req, res) {
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- //var foldername=req.body.folder_name;
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
         return res.send({success:false, message:'failed to authendicate the tokens'});
       }else{ 
        req.decoded=decoded;
-  db.collection('textstore').find({
-    "$text": {
-      "$search": req.body.FolderID
-    }
-  } ,{
-    _id: 0,
-    details:1,  
-  }).toArray(function(err, items) {
-    if(err){
-        console.log(err);}
-        else
-        {
-             res.send({success:true,"content":items});
-            
-/*
-const publicIp = require('public-ip'); 
-publicIp.v4().then(ip => {
-    console.log("this is my ip"+ip);   
-    var satelize = require('satelize');
-satelize.satelize({ip:ip}, function(err, payload) {
-                  console.log(JSON.stringify(payload.country.en));
-                  console.log(JSON.stringify(payload.timezone));
-
-var now=new Date();
-var TimeUTC=now.toUTCString();
-console.log(TimeUTC);
-      var date = new Date(TimeUTC);
-console.log(date.toString());
-*/
-
-}
-}); 
+  db.collection('textstore').find({$text: {$search:req.body.keyword}},{_id:0,details:1})
+  .toArray(function(err, items) {
+    if (err) {console.log(err);}
+    else{
+       res.send({success:true,"content":items});
+       }
+  });
 }
 });
 }
@@ -516,27 +619,21 @@ else{
     res.send({success:false,message:"must provide the tokens"});
   }
 });
-//---------------------search by keyword---------------------------------
-app.post("/searchByKey", function(req, res) {
+//---------------------search in general folder----------------------
+app.post("/searchInGen", function(req, res) {
 var token=req.body.token || req.query.token || req.headers['x-access-token'];
- 
   if(token){
     jwt.verify(token,app.get('superSecret'), function(err,decoded){
       if(err){
         return res.send({success:false, message:'failed to authendicate the tokens'});
       }else{ 
        req.decoded=decoded;
-  db.collection('textstore').find({
-    "$text": {
-      "$search": req.body.keyword
-    }
-  }, {
-    
-    _id: 0,
-    created: 1,
-    details:1,  
-  }).toArray(function(err, items) {
-    res.send({success:true,"content":items});
+  db.collection('general').find({$text: {$search:req.body.keyword}},{_id:0,details:1})
+  .toArray(function(err, items) {
+    if (err) {console.log(err);}
+    else{
+       res.send({success:true,"content":items});
+       }
   });
 }
 });
